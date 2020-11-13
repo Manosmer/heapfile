@@ -1,11 +1,11 @@
 #pragma once
 
-#include "PageHeader.h"
+#include "Page.h"
 
 
 class HeapfileHeader {
     private:
-        unsigned int usedPages;
+        unsigned int currPages;
         unsigned int pageCapacity;
         unsigned int maxPages;
         unsigned int pageSize;
@@ -13,9 +13,14 @@ class HeapfileHeader {
         unsigned int dataStartLocation;
         std::fstream *file;
 
-        PageId createPage(int data);
+        PageId fullListPointer; // points to list of full pages
+        PageId freeListPointer; // points to list of pages with available free space
+
+        PageId createPage();
         void deletePage(PageId pid);
-        unsigned int calcPosSlot(Rid rid);
+        
+        unsigned int calcPagePosition(PageId pid);
+        Rid writeData(PageId pid, int data);
     public:
         HeapfileHeader();
         HeapfileHeader(unsigned int maxPages, unsigned int pageCap, std::fstream *file);
@@ -24,11 +29,12 @@ class HeapfileHeader {
         unsigned int getPageCapacity();
         unsigned int getMaxPages();
 
-        void updateFileStream(std::fstream *file);
+        void setFileStream(std::fstream *file);
 
         
-        Rid writeData(PageId pid, int data);
         Rid writeData(int data);
 
         int readData(Rid record);
+
+        void deleteSlot(Rid record);
 };

@@ -5,10 +5,6 @@
 #include "HeapfileHeader.h"
 
 
-enum CapacityLevel {
-    hpPage,
-    hpFile
-};
 
 class Heapfile {
     private:
@@ -21,6 +17,12 @@ class Heapfile {
         void updateHeader();
         void checkOpenOrThrow();
     public:
+        enum CapacityLevel {
+            hpPage,
+            hpFile
+        };
+
+        
         // Constructors
         Heapfile();
         Heapfile(unsigned int pageCapacity, unsigned int pagesNo, std::string filename);
@@ -35,7 +37,7 @@ class Heapfile {
 
         Rid writeData(int data);
         int readData(Rid record);
-
+        void deleteSlot(Rid record);
 
         void close();
 };

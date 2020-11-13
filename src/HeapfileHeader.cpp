@@ -1,29 +1,35 @@
 #include <iostream>
+#include <string>
 
 #include "HeapfileHeader.h"
-#include "PageHeader.h"
+#include "Page.h"
 
 
 HeapfileHeader::HeapfileHeader() {
-    this->usedPages = 0;
+    this->currPages = 0;
     this->pageCapacity = 0;
     this->maxPages = 0;
     this->pageSize = 0;
     this->file = NULL;
     this->dataStartLocation = 0;
+    this->fullListPointer = -1;
+    this->freeListPointer = -1;
 }
 
 HeapfileHeader::HeapfileHeader(unsigned int maxPages, unsigned int pageCap, std::fstream *file) {
+
     this->maxPages = maxPages;
     this->pageCapacity = pageCap;
-    this->usedPages = 0;
-    this->pageSize = sizeof(PageHeader) + pageCap*sizeof(int);
+    this->currPages = 0;
+    this->pageSize = Page(-1, this->pageCapacity).sizeInDisk();
 
     this->dataStartLocation = sizeof(HeapfileHeader);
     this->file = file;
-    
 
-    createPage(0);
+    createPage();
+
+    this->freeListPointer = 0;
+    this->fullListPointer = -1;
 }
 
 
@@ -36,7 +42,7 @@ unsigned int HeapfileHeader::getMaxPages() {
     return this->maxPages;
 }
 
-void HeapfileHeader::updateFileStream(std::fstream *file) {
+void HeapfileHeader::setFileStream(std::fstream *file) {
     this->file = file;
 }
 
@@ -54,60 +60,111 @@ void HeapfileHeader::updateFileStream(std::fstream *file) {
  * 
  */
 Rid HeapfileHeader::writeData(PageId pid, int data) {
-    PageHeader phBuffer(0);
+    Page pBuffer;
     Rid outputLocation;
-    unsigned int pos;
 
-    file->seekg(dataStartLocation + pid*pageSize, std::ios_base::beg);
     if(!file->is_open()) {
         throw HeapFileNotOpen();
     }
-    file->read((char*) &phBuffer, sizeof(PageHeader));
+    
+    pBuffer.readPage(calcPagePosition(pid), file);
+    outputLocation = pBuffer.writeData(data);
 
-    // write the actual data
-    outputLocation = phBuffer.getFreeSlot();
-    pos = calcPosSlot(outputLocation);
+    // if page becomes full add it to the full pages list
+    if(pBuffer.isFull()) {
+        PageId prevId = pBuffer.getPrev(), nextId = pBuffer.getNext();
+        Page previousPage, nextPage, fullhead;
 
-    file->seekp(pos, std::ios_base::beg);
-    file->write((char*)&data, sizeof(int));
+
+        // change previousPage's next pointer
+        if(pBuffer.getId() != freeListPointer) {
+            // if pBuffer is not the head of the free space list
+
+            previousPage.readPage(calcPagePosition(prevId), file);
+            previousPage.setNext(nextId);
+            previousPage.writePage(calcPagePosition(prevId), file);
+            
+        } else {
+            freeListPointer = nextId;
+        }
+
+        // change nextPage's previous pointer
+        if(nextId != -1) {
+            // if pBuffer is not the end of the free space list
+
+            nextPage.readPage(calcPagePosition(nextId), file);
+            nextPage.setPrev(prevId);
+            nextPage.writePage(calcPagePosition(nextId), file);
+        }
+
+        // change full list head's previous pointer
+        if(fullListPointer != -1) {
+            fullhead.readPage(calcPagePosition(fullListPointer), file);
+            fullhead.setPrev(pBuffer.getId());
+            fullhead.writePage(calcPagePosition(fullListPointer), file);
+        }
+
+        pBuffer.setPrev(-1);
+        pBuffer.setNext(fullListPointer);
+        fullListPointer = pBuffer.getId();
+    }
+    pBuffer.writePage(calcPagePosition(pid), file);
 
     return outputLocation;
 }
 
+
 Rid HeapfileHeader::writeData(int data) {
-    // TODO: finds a page to write the new data and uses the
-    // writeData(PageId, int) to write it
-    return Rid(0,0);
+    if(freeListPointer == -1) {
+        createPage();
+        freeListPointer = this->currPages - 1;
+    }
+    return writeData(freeListPointer, data);
 }
 
 
 
 int HeapfileHeader::readData(Rid record) {
-    PageHeader phBuffer(0);
-    int data;
-    unsigned int pos = calcPosSlot(record);
+    Page pBuffer;
 
-    file->seekg(pos, std::ios_base::beg);
-    file->read((char*) &data, sizeof(int));
+    if(record.pid >= currPages) {
+        throw "No page with that pid";
+    }
 
-    return data;
+    pBuffer.readPage(calcPagePosition(record.pid), file);
+
+    return pBuffer.readData(record.sid);
 }
 
+void HeapfileHeader::deleteSlot(Rid record) {
+    Page pBuffer;
+    if(record.pid >= this->currPages) {
+        throw "No page with that pid";
+    }
 
+    pBuffer.readPage(calcPagePosition(record.pid), file);
+
+    if(pBuffer.isFull()) {
+    // TODO: check if page was full and add it to free space list
+
+    }
+
+    pBuffer.deleteSlot(record.sid);
+    pBuffer.writePage(calcPagePosition(record.pid), file);
+}
 
 
 /**
  * Creates a new page in the heapfile.
  * 
- * @param data int: the first record contained in the new page
  * @returns the PageId of the new page.
  */
-PageId HeapfileHeader::createPage(int data) {
-    // For now let's create a page at pid=0
-    PageId pid = 0;
-    PageHeader *ph = new PageHeader(pid);
-    
-    if(this->maxPages - this->usedPages <= 0) {
+PageId HeapfileHeader::createPage() {
+    unsigned int pid = this->currPages;
+    Page *p = new Page(pid, this->pageCapacity);
+
+
+    if(this->maxPages - this->currPages <= 0) {
         throw HeapFileOutOfPages();
     }
 
@@ -115,14 +172,11 @@ PageId HeapfileHeader::createPage(int data) {
         throw HeapFileNotOpen();
     }
     
-    this->usedPages++;
+    this->currPages++;
 
-    file->seekp(dataStartLocation + pid*pageSize, std::ios_base::beg);
-    file->write((char*) ph, sizeof(PageHeader));
+    p->writePage(calcPagePosition(pid), file);
+    delete p;
 
-    delete ph;
-
-    // TODO
     return pid;
 }
 
@@ -130,14 +184,17 @@ PageId HeapfileHeader::createPage(int data) {
 void HeapfileHeader::deletePage(PageId pid) {
     // check if page with pid exists
     // free the page
-    
-    // then
-    if(this->usedPages > 0) {
-        this->usedPages--;
+    Page pBuffer;
+    if(pid >= this->currPages) {
+        throw "No page with that pid";
     }
+
+    pBuffer.readPage(calcPagePosition(pid), file);
+    pBuffer.free();
+    pBuffer.writePage(calcPagePosition(pid), file);
 }
 
 
-unsigned int HeapfileHeader::calcPosSlot(Rid rid) {
-    return dataStartLocation + rid.pid*pageSize + sizeof(PageHeader) + rid.sid;
+unsigned int HeapfileHeader::calcPagePosition(PageId pid) {
+    return dataStartLocation + pid*pageSize;
 }

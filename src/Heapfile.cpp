@@ -28,6 +28,7 @@ Heapfile::Heapfile(unsigned int pageCapacity, unsigned int pagesNo, std::string 
         // create new header
         this->head = new HeapfileHeader(pagesNo, pageCapacity, file);
         
+        file->seekp(0);
         file->write((char*) head, sizeof(HeapfileHeader));
     }
 
@@ -46,18 +47,19 @@ Heapfile::~Heapfile() {
 
 // Open existing hp file and associate it with this object.
 void Heapfile::open(std::string filename) {
-    this->file = new std::fstream;
+    this->file = new std::fstream();
     
     this->head = new HeapfileHeader();
     
     // read header from file
     this->filename = filename;
-
     
     file->open(filename, std::ios_base::out | std::ios_base::in | std::ios_base::binary);
+
     if(file->is_open()) {
-        file->read((char*) this->head, sizeof(HeapfileHeader));
-        this->head->updateFileStream(file);
+        file->seekg(0);
+        file->read((char*) head, sizeof(HeapfileHeader));
+        this->head->setFileStream(file);
         this->numOfPages = this->head->getMaxPages();
     } else {
         throw FileNoGoodException();
@@ -77,6 +79,8 @@ unsigned int Heapfile::getCapacity(CapacityLevel flag) {
         return head->getPageCapacity();
     } else if(flag == hpFile) {
         return head->getPageCapacity() * numOfPages;
+    } else {
+        throw "Capacity level not defined";
     }
 }
 
@@ -94,7 +98,7 @@ Rid Heapfile::writeData(int data) {
     checkOpenOrThrow();
 
     // We will use page 0 for now
-    return this->head->writeData(0, data);
+    return this->head->writeData(data);
 }
 
 
@@ -104,9 +108,14 @@ int Heapfile::readData(Rid record) {
     return head->readData(record);
 }
 
+void Heapfile::deleteSlot(Rid record) {
+    this->head->deleteSlot(record);
+}
+
 
 void Heapfile::updateHeader() {
     if(file->is_open()) {
+        file->seekp(std::ios_base::beg);
         file->write((char*) head, sizeof(HeapfileHeader));
     }
 }
