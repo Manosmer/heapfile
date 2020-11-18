@@ -11,8 +11,8 @@ int main(int argc, char* argv[])
         // hp->open("hp");
         hp->writeData(30);
         hp->writeData(40);
-        hp->deleteSlot(Rid(0,1));
         hp->writeData(50);
+        hp->deleteData(Rid(0,1));
 
         std::cout << "DATA IN FILE (PAGE=0,SLOT=0): " << hp->readData(Rid(0,1)) << std::endl;
     } catch(std::exception &e) {

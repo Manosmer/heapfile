@@ -108,8 +108,8 @@ int Heapfile::readData(Rid record) {
     return head->readData(record);
 }
 
-void Heapfile::deleteSlot(Rid record) {
-    this->head->deleteSlot(record);
+void Heapfile::deleteData(Rid record) {
+    this->head->deleteData(record);
 }
 
 

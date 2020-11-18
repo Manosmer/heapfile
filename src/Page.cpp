@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "Page.h"
 
 
@@ -167,7 +165,7 @@ int Page::readData(SlotId sid) {
 }
 
 
-void Page::deleteSlot(SlotId sid) {
+void Page::freeSlot(SlotId sid) {
     if(sid >= maxSlots) {
         throw "Trying to delete unused slot";
     }

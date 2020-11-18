@@ -75,5 +75,5 @@ class Page {
         Rid writeData(int el);
         int readData(SlotId sid);
 
-        void deleteSlot(SlotId sid);
+        void freeSlot(SlotId sid);
 };

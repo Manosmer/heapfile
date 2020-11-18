@@ -136,7 +136,7 @@ int HeapfileHeader::readData(Rid record) {
     return pBuffer.readData(record.sid);
 }
 
-void HeapfileHeader::deleteSlot(Rid record) {
+void HeapfileHeader::deleteData(Rid record) {
     Page pBuffer;
     if(record.pid >= this->currPages) {
         throw "No page with that pid";
@@ -146,10 +146,36 @@ void HeapfileHeader::deleteSlot(Rid record) {
 
     if(pBuffer.isFull()) {
     // TODO: check if page was full and add it to free space list
+        PageId prevId = pBuffer.getPrev(), nextId = pBuffer.getNext();
+        Page previous, next, freeheader;
 
+        if(nextId != -1) {
+            // if next exists change its prev
+            next.readPage(calcPagePosition(nextId), file);
+            next.setPrev(prevId);
+            next.writePage(calcPagePosition(nextId), file);
+        }
+
+        if(pBuffer.getId() != fullListPointer) {
+            // if pBuffer is not the full list head
+            previous.readPage(calcPagePosition(prevId), file);
+            previous.setNext(nextId);
+            previous.writePage(calcPagePosition(prevId), file);
+        }
+
+        if(freeListPointer != -1) {
+            // if free list is not empty
+            freeheader.readPage(calcPagePosition(freeListPointer), file);
+            freeheader.setPrev(pBuffer.getId());
+            freeheader.writePage(calcPagePosition(freeListPointer), file);
+        }
+
+        pBuffer.setPrev(-1);
+        pBuffer.setNext(freeListPointer);
+        freeListPointer = pBuffer.getId();
     }
 
-    pBuffer.deleteSlot(record.sid);
+    pBuffer.freeSlot(record.sid);
     pBuffer.writePage(calcPagePosition(record.pid), file);
 }
 
@@ -186,11 +212,13 @@ void HeapfileHeader::deletePage(PageId pid) {
     // free the page
     Page pBuffer;
     if(pid >= this->currPages) {
+        // pid is 0...currPages-1
         throw "No page with that pid";
     }
 
     pBuffer.readPage(calcPagePosition(pid), file);
     pBuffer.free();
+    // TODO: change things if it was in the full list
     pBuffer.writePage(calcPagePosition(pid), file);
 }
 

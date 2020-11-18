@@ -37,7 +37,7 @@ class Heapfile {
 
         Rid writeData(int data);
         int readData(Rid record);
-        void deleteSlot(Rid record);
+        void deleteData(Rid record);
 
         void close();
 };
